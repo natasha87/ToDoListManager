@@ -3,5 +3,9 @@
     <item
         android:id="@+id/menuItemDelete"
         android:title="@string/action_delete"/>
+    <item
+        android:id="@+id/menuItemCall"
+        android:showAsAction="withText"
+        android:title="@string/action_init_call"/>
 
 </menu>

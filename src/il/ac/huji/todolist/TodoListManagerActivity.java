@@ -1,15 +1,21 @@
 package il.ac.huji.todolist;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.SyncStateContract.Constants;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.DialogInterface;
+import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.Typeface;
+import android.util.Log;
 import android.view.ContextMenu;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -17,73 +23,55 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView.AdapterContextMenuInfo;
 import android.widget.ArrayAdapter;
-import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
 
 public class TodoListManagerActivity extends Activity {
 
-	private ArrayList<String> items_array_list;
+	private ArrayList<TodoItem> items_array_list;
 	private ListView listView;
-	private ToDoListAdapter adapter;
+	private ToDoListAdapter<TodoItem> adapter;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_todo_list_manager);
-		items_array_list = new ArrayList<String>();
+		items_array_list = new ArrayList<TodoItem>();
 		listView = (ListView)findViewById(R.id.lstToDoItems);
-		adapter = new ToDoListAdapter(this, android.R.layout.simple_list_item_1, items_array_list);
+		adapter = new ToDoListAdapter<TodoItem>(getApplicationContext(), R.layout.row_layout, items_array_list);
 		listView.setAdapter(adapter);
 		adapter.setNotifyOnChange(true);
 		registerForContextMenu(listView);
+		Log.i(Constants._COUNT, "done on create");
 	}
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item){
 		int id = item.getItemId();
-		EditText newItem = (EditText)findViewById(R.id.edtNewItem); 
-		final String newItemString = newItem.getText().toString();
-
 		switch(id){
 		case R.id.menuItemAdd:
-			if (!newItemString.equals("")){
-				// what if the input is too long? or invalid??
-				if (items_array_list.contains(newItemString)){
-					new AlertDialog.Builder(this)
-					.setTitle("This task already exists!")
-					.setMessage("Do you wand to make another copy of the task?")
-					.setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-						public void onClick(DialogInterface dialog, int which) { 
-							// create a duplicate
-							int copyCounter = 1;
-							while (items_array_list.contains(newItemString+"("+copyCounter+")")){
-								copyCounter++;
-							}
-							items_array_list.add(newItemString+"("+copyCounter+")");
-							adapter.notifyDataSetChanged();
-							((EditText) findViewById(R.id.edtNewItem)).setText("");
-						}
-					})
-					.setNegativeButton(android.R.string.no, new DialogInterface.OnClickListener() {
-						public void onClick(DialogInterface dialog, int which) { 
-							// do nothing
-							((EditText) findViewById(R.id.edtNewItem)).setText("");
-						}
-					})
-					.show();
-				}
-				else {
-					items_array_list.add(newItemString);
-					adapter.notifyDataSetChanged();
-					((EditText) findViewById(R.id.edtNewItem)).setText("");
-				}
-			}
-			break;
+			Intent intent = new Intent(getApplicationContext(), AddNewTodoItemActivity.class);
+			startActivityForResult(intent, 1);
+			Log.i(Constants._COUNT, "Add menu item selected");
+			return true;
 		default:
 			return super.onOptionsItemSelected(item);
 		}
-		return true;
+	}
+
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		if (resultCode == RESULT_OK && data != null){
+			Log.i(Constants._COUNT, "Getting result");
+			String title = (String) data.getExtras().get("title");
+			if (title.equals(""))
+				return;
+			Date date = (Date) data.getExtras().get("date");
+			SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
+			String formattedDate = format.format(date);
+			items_array_list.add(new TodoItem(title, formattedDate));
+			adapter.notifyDataSetChanged();	
+		}
 	}
 
 	@Override
@@ -97,40 +85,66 @@ public class TodoListManagerActivity extends Activity {
 		super.onCreateContextMenu(menu, v, menuInfo);
 		MenuInflater inflater = getMenuInflater();
 		AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
-		menu.setHeaderTitle(items_array_list.get(info.position));
 		inflater.inflate(R.menu.context_menu, menu);
+		menu.findItem(R.id.menuItemCall).setVisible(false);
+		menu.setHeaderTitle(items_array_list.get(info.position).getTitle());
+
+		if (items_array_list.get(info.position).getTitle().startsWith("Call ")){
+			menu.findItem(R.id.menuItemCall).setVisible(true);
+			MenuItem mi = (MenuItem) menu.findItem(R.id.menuItemCall);
+			mi.setTitle(items_array_list.get(info.position).getTitle());
+		}
 	}
 
 	@Override
 	public boolean onContextItemSelected(MenuItem item) {
+		AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
 		switch (item.getItemId()){
 		case R.id.menuItemDelete:
-			AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
 			int pos = (int) info.id;
 			items_array_list.remove(pos);
 			adapter.notifyDataSetChanged();
+			return true;
+		case R.id.menuItemCall:
+			String tel = items_array_list.get(info.position).getTitle().replace("Call ", "");
+			Intent intentDial = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:".concat(tel)));
+			startActivity(intentDial);
 			return true;
 		default:
 			return super.onContextItemSelected(item);
 		}
 	}
 
-	class ToDoListAdapter extends ArrayAdapter<String>{
+	class ToDoListAdapter<T> extends ArrayAdapter<T>{
+		Context context;
 
-		public ToDoListAdapter(Context context, int resource, List<String> items) {
+		public ToDoListAdapter(Context context, int resource, List<T> items) {
 			super(context, resource, items);
+			this.context = context;
 		}
 
 		@Override
 		public View getView(int position, View convertView, ViewGroup parent) {
-			TextView view =(TextView) super.getView(position, convertView, parent);
-			if(position%2 == 0){
-				view.setTextColor(Color.RED);
-			} else{
-				view.setTextColor(Color.BLUE);
+
+			View view = convertView;
+			LayoutInflater inflater = getLayoutInflater();
+			view = inflater.inflate(R.layout.row_layout, null);
+			((TextView)view.findViewById(R.id.txtTodoTitle)).setText(items_array_list.get(position).getTitle());
+			((TextView)view.findViewById(R.id.txtTodoDueDate)).setText(items_array_list.get(position).getDueDate().toString());
+
+			SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+			Date usersdate = null;
+			try {
+				usersdate = sdf.parse(items_array_list.get(position).getDueDate());
+			} catch (ParseException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
-			view.setCompoundDrawablesWithIntrinsicBounds(R.drawable.my_point_icon, 0, 0, 0);
-			view.setTypeface(null, Typeface.BOLD);
+
+			if (new Date().after(usersdate)) {
+				((TextView)view.findViewById(R.id.txtTodoTitle)).setTextColor(Color.RED);
+				((TextView)view.findViewById(R.id.txtTodoDueDate)).setTextColor(Color.RED);
+			}
 			return view;
 		}
 	}
