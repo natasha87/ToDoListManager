@@ -1,48 +1,41 @@
 package il.ac.huji.todolist;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import com.parse.FindCallback;
+import com.parse.ParseException;
+import com.parse.ParseObject;
+import com.parse.ParseQuery;
+
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.SyncStateContract.Constants;
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
 import android.util.Log;
 import android.view.ContextMenu;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.AdapterView.AdapterContextMenuInfo;
-import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.TextView;
 
 public class TodoListManagerActivity extends Activity {
 
-	private ArrayList<TodoItem> items_array_list;
 	private ListView listView;
-	private ToDoListAdapter<TodoItem> adapter;
+	private ToDoListModel todoListModel;
+	private ToDoListCursorAdapter adapter;
 
 	@Override
-	protected void onCreate(Bundle savedInstanceState) {
+	protected void onCreate(Bundle savedInstanceState) {		
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_todo_list_manager);
-		items_array_list = new ArrayList<TodoItem>();
 		listView = (ListView)findViewById(R.id.lstToDoItems);
-		adapter = new ToDoListAdapter<TodoItem>(getApplicationContext(), R.layout.row_layout, items_array_list);
+		todoListModel = new ToDoListModel(getApplicationContext());
+		adapter = new ToDoListCursorAdapter(getApplicationContext(), todoListModel);
 		listView.setAdapter(adapter);
-		adapter.setNotifyOnChange(true);
 		registerForContextMenu(listView);
-		Log.i(Constants._COUNT, "done on create");
 	}
 
 	@Override
@@ -52,7 +45,6 @@ public class TodoListManagerActivity extends Activity {
 		case R.id.menuItemAdd:
 			Intent intent = new Intent(getApplicationContext(), AddNewTodoItemActivity.class);
 			startActivityForResult(intent, 1);
-			Log.i(Constants._COUNT, "Add menu item selected");
 			return true;
 		default:
 			return super.onOptionsItemSelected(item);
@@ -62,15 +54,13 @@ public class TodoListManagerActivity extends Activity {
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		if (resultCode == RESULT_OK && data != null){
-			Log.i(Constants._COUNT, "Getting result");
-			String title = (String) data.getExtras().get("title");
-			if (title.equals(""))
+			String title = (String) data.getExtras().get(ToDoListConstants.TITLE_COL);
+			if (title.equals(ToDoListConstants.EMPTY_PREF))
 				return;
-			Date date = (Date) data.getExtras().get("date");
-			SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy");
-			String formattedDate = format.format(date);
-			items_array_list.add(new TodoItem(title, formattedDate));
-			adapter.notifyDataSetChanged();	
+			Date date = (Date) data.getExtras().get(ToDoListConstants.DUE_DATE_COL);
+			String finalTitle = todoListModel.addItem(title, date);
+			adapter.changeCursor(todoListModel.getCursor());
+			addToParse(finalTitle, date);
 		}
 	}
 
@@ -85,29 +75,33 @@ public class TodoListManagerActivity extends Activity {
 		super.onCreateContextMenu(menu, v, menuInfo);
 		MenuInflater inflater = getMenuInflater();
 		AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
+		int position = (int) info.id;
+
 		inflater.inflate(R.menu.context_menu, menu);
 		menu.findItem(R.id.menuItemCall).setVisible(false);
-		menu.setHeaderTitle(items_array_list.get(info.position).getTitle());
+		menu.setHeaderTitle(todoListModel.getTitle(position));
 
-		if (items_array_list.get(info.position).getTitle().startsWith("Call ")){
+		if (todoListModel.getTitle(position).startsWith(ToDoListConstants.CALL_PREF)){
 			menu.findItem(R.id.menuItemCall).setVisible(true);
 			MenuItem mi = (MenuItem) menu.findItem(R.id.menuItemCall);
-			mi.setTitle(items_array_list.get(info.position).getTitle());
+			mi.setTitle(todoListModel.getTitle(position));
 		}
 	}
 
 	@Override
 	public boolean onContextItemSelected(MenuItem item) {
 		AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
+		int position = (int) info.id;
+		String title = todoListModel.getTitle(position);
 		switch (item.getItemId()){
 		case R.id.menuItemDelete:
-			int pos = (int) info.id;
-			items_array_list.remove(pos);
-			adapter.notifyDataSetChanged();
+			todoListModel.deleteItem(position);
+			adapter.changeCursor(todoListModel.getCursor());
+			deleteFromParse(title);
 			return true;
 		case R.id.menuItemCall:
-			String tel = items_array_list.get(info.position).getTitle().replace("Call ", "");
-			Intent intentDial = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:".concat(tel)));
+			String tel = todoListModel.getTitle(position).replace(ToDoListConstants.CALL_PREF, ToDoListConstants.EMPTY_PREF);
+			Intent intentDial = new Intent(Intent.ACTION_DIAL, Uri.parse(ToDoListConstants.TEL_PREF.concat(tel)));
 			startActivity(intentDial);
 			return true;
 		default:
@@ -115,37 +109,32 @@ public class TodoListManagerActivity extends Activity {
 		}
 	}
 
-	class ToDoListAdapter<T> extends ArrayAdapter<T>{
-		Context context;
+	private void addToParse(String title, Date date){
+		ParseObject obj = new ParseObject(ToDoListConstants.PARSE_TABLE);
+		obj.put(ToDoListConstants.TITLE_COL, title);
+		obj.put(ToDoListConstants.DUE_DATE_COL, date);
+		obj.saveInBackground();
+	}
 
-		public ToDoListAdapter(Context context, int resource, List<T> items) {
-			super(context, resource, items);
-			this.context = context;
-		}
-
-		@Override
-		public View getView(int position, View convertView, ViewGroup parent) {
-
-			View view = convertView;
-			LayoutInflater inflater = getLayoutInflater();
-			view = inflater.inflate(R.layout.row_layout, null);
-			((TextView)view.findViewById(R.id.txtTodoTitle)).setText(items_array_list.get(position).getTitle());
-			((TextView)view.findViewById(R.id.txtTodoDueDate)).setText(items_array_list.get(position).getDueDate().toString());
-
-			SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-			Date usersdate = null;
-			try {
-				usersdate = sdf.parse(items_array_list.get(position).getDueDate());
-			} catch (ParseException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+	private void deleteFromParse(String title){
+		ParseQuery<ParseObject> query = ParseQuery.getQuery(ToDoListConstants.PARSE_TABLE);
+		// NOTICE: the names of the toDo item are unique.
+		query.whereEqualTo(ToDoListConstants.TITLE_COL, title);			
+		query.findInBackground(new FindCallback<ParseObject>() {
+			@Override
+			public void done(List<ParseObject> objects, ParseException e) {
+				if(e == null){
+					if(objects.size() > 0){
+						objects.get(0).deleteInBackground();
+					}
+					else{
+						Log.i("parseDelete", "Item to delete, not found");
+					}
+				}
+				else{
+					Log.i("parseDelete", "An error occured in delete");
+				}
 			}
-
-			if (new Date().after(usersdate)) {
-				((TextView)view.findViewById(R.id.txtTodoTitle)).setTextColor(Color.RED);
-				((TextView)view.findViewById(R.id.txtTodoDueDate)).setTextColor(Color.RED);
-			}
-			return view;
-		}
+		});
 	}
 }

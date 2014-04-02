@@ -5,8 +5,6 @@ import java.util.GregorianCalendar;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.provider.SyncStateContract.Constants;
-import android.util.Log;
 import android.view.Menu;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -18,17 +16,12 @@ public class AddNewTodoItemActivity extends Activity  implements View.OnClickLis
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
-		Log.i(Constants._COUNT, "onCreate add activity 1");
 		super.onCreate(savedInstanceState);
-
 		setContentView(R.layout.add_new_item_layout);
-
 		Button btnCancel = (Button) findViewById(R.id.btnCancel);
 		Button btnOk = (Button) findViewById(R.id.btnOK);
-		Log.i(Constants._COUNT, "onCreate add activity 2");
 		btnCancel.setOnClickListener((OnClickListener) this);
 		btnOk.setOnClickListener((OnClickListener)this);
-		Log.i(Constants._COUNT, "onCreate add activity 3");
 	}
 
 
@@ -47,9 +40,9 @@ public class AddNewTodoItemActivity extends Activity  implements View.OnClickLis
 			Intent intent = getIntent();
 			DatePicker dp = (DatePicker) findViewById(R.id.datePicker);
 			Calendar cal = new GregorianCalendar(dp.getYear(), dp.getMonth(), dp.getDayOfMonth());
-			intent.putExtra("date", cal.getTime());
+			intent.putExtra(ToDoListConstants.DUE_DATE_COL, cal.getTime());
 			EditText edtNewItem = (EditText) findViewById(R.id.edtNewItem);
-			intent.putExtra("title", edtNewItem.getText().toString());
+			intent.putExtra(ToDoListConstants.TITLE_COL, edtNewItem.getText().toString());
 			setResult(RESULT_OK, intent);
 			finish();
 			break;
