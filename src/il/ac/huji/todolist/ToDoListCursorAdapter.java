@@ -15,8 +15,8 @@ public class ToDoListCursorAdapter extends CursorAdapter{
 	
 
 	@SuppressWarnings("deprecation")
-	public ToDoListCursorAdapter(Context context, ToDoListModel model) {
-		super(context, model.getCursor());
+	public ToDoListCursorAdapter(Context context, Cursor c) {
+		super(context, c);
 	}
 
 	@Override

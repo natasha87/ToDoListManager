@@ -1,18 +1,13 @@
 package il.ac.huji.todolist;
 
 import java.util.Date;
-import java.util.List;
-
-import com.parse.FindCallback;
-import com.parse.ParseException;
-import com.parse.ParseObject;
-import com.parse.ParseQuery;
-
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.Intent;
-import android.util.Log;
+import android.database.Cursor;
 import android.view.ContextMenu;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -26,16 +21,31 @@ public class TodoListManagerActivity extends Activity {
 	private ListView listView;
 	private ToDoListModel todoListModel;
 	private ToDoListCursorAdapter adapter;
+	private LoadListFromDB loadDB;
+	private AddToDB addToDB;
+	private RemoveFromDB removeFromDB;
+	private ProgressDialog progressDialog;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {		
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_todo_list_manager);
+
 		listView = (ListView)findViewById(R.id.lstToDoItems);
 		todoListModel = new ToDoListModel(getApplicationContext());
-		adapter = new ToDoListCursorAdapter(getApplicationContext(), todoListModel);
-		listView.setAdapter(adapter);
-		registerForContextMenu(listView);
+		
+		setDialogProgress();
+
+		loadDB = new LoadListFromDB();
+		loadDB.execute();
+
+		registerForContextMenu(listView);	
+	}
+	
+	private void setDialogProgress(){
+		progressDialog = new ProgressDialog(this);
+		progressDialog.setMessage("Loading ...");
+		progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
 	}
 
 	@Override
@@ -57,10 +67,8 @@ public class TodoListManagerActivity extends Activity {
 			String title = (String) data.getExtras().get(ToDoListConstants.TITLE_COL);
 			if (title.equals(ToDoListConstants.EMPTY_PREF))
 				return;
-			Date date = (Date) data.getExtras().get(ToDoListConstants.DUE_DATE_COL);
-			String finalTitle = todoListModel.addItem(title, date);
-			adapter.changeCursor(todoListModel.getCursor());
-			addToParse(finalTitle, date);
+			addToDB = new AddToDB();
+			addToDB.execute(data);
 		}
 	}
 
@@ -92,12 +100,10 @@ public class TodoListManagerActivity extends Activity {
 	public boolean onContextItemSelected(MenuItem item) {
 		AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
 		int position = (int) info.id;
-		String title = todoListModel.getTitle(position);
 		switch (item.getItemId()){
 		case R.id.menuItemDelete:
-			todoListModel.deleteItem(position);
-			adapter.changeCursor(todoListModel.getCursor());
-			deleteFromParse(title);
+			removeFromDB = new RemoveFromDB();
+			removeFromDB.execute(position);
 			return true;
 		case R.id.menuItemCall:
 			String tel = todoListModel.getTitle(position).replace(ToDoListConstants.CALL_PREF, ToDoListConstants.EMPTY_PREF);
@@ -109,32 +115,67 @@ public class TodoListManagerActivity extends Activity {
 		}
 	}
 
-	private void addToParse(String title, Date date){
-		ParseObject obj = new ParseObject(ToDoListConstants.PARSE_TABLE);
-		obj.put(ToDoListConstants.TITLE_COL, title);
-		obj.put(ToDoListConstants.DUE_DATE_COL, date);
-		obj.saveInBackground();
+	private class LoadListFromDB extends AsyncTask<Void, Void, Cursor>
+	{
+		@Override
+		protected void onPreExecute() {
+			progressDialog.show();
+			super.onPreExecute();
+		}
+
+		@Override
+		protected Cursor doInBackground(Void... params) {
+			todoListModel.getReadable();
+			return todoListModel.getCursor();
+		}
+
+		@Override
+		protected void onPostExecute(Cursor c) {
+			adapter = new ToDoListCursorAdapter(getApplicationContext(), c);
+			listView.setAdapter(adapter);
+			progressDialog.dismiss();
+			super.onPostExecute(c);
+		}
 	}
 
-	private void deleteFromParse(String title){
-		ParseQuery<ParseObject> query = ParseQuery.getQuery(ToDoListConstants.PARSE_TABLE);
-		// NOTICE: the names of the toDo item are unique.
-		query.whereEqualTo(ToDoListConstants.TITLE_COL, title);			
-		query.findInBackground(new FindCallback<ParseObject>() {
-			@Override
-			public void done(List<ParseObject> objects, ParseException e) {
-				if(e == null){
-					if(objects.size() > 0){
-						objects.get(0).deleteInBackground();
-					}
-					else{
-						Log.i("parseDelete", "Item to delete, not found");
-					}
-				}
-				else{
-					Log.i("parseDelete", "An error occured in delete");
-				}
-			}
-		});
+	private class AddToDB extends AsyncTask<Intent, Void, Cursor>
+	{
+
+		@Override
+		protected void onPreExecute() {
+			super.onPreExecute();
+		}
+
+		@Override
+		protected Cursor doInBackground(Intent... params) {
+			todoListModel.getWritable();
+			String title = (String) params[0].getExtras().get(ToDoListConstants.TITLE_COL);
+			Date date = (Date) params[0].getExtras().get(ToDoListConstants.DUE_DATE_COL);
+			todoListModel.addItem(title, date);
+			return todoListModel.getCursor();
+		}
+
+		@Override
+		protected void onPostExecute(Cursor c) {
+			adapter.changeCursor(c);
+			super.onPostExecute(c);
+		}
 	}
+
+	private class RemoveFromDB extends AsyncTask<Integer, Void, Void>
+	{
+
+		@Override
+		protected Void doInBackground(Integer... params) {
+			todoListModel.getWritable();
+			todoListModel.deleteItem(params[0]);
+			return null;
+		}
+
+		@Override
+		protected void onPostExecute(Void v) {
+			adapter.changeCursor(todoListModel.getCursor());
+			super.onPostExecute(v);
+		}
+	}	
 }

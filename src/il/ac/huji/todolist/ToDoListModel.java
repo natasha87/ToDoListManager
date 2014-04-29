@@ -14,7 +14,14 @@ public class ToDoListModel {
 
 	public ToDoListModel(Context context) {
 		dbHelper = new DatabaseHelper(context);
+	}
+	
+	public void getWritable(){
 		db = dbHelper.getWritableDatabase();
+	}
+	
+	public void getReadable(){
+		db = dbHelper.getReadableDatabase();
 	}
 
 	public Cursor getCursor() {
@@ -23,7 +30,7 @@ public class ToDoListModel {
 
 	// add item
 	@SuppressWarnings("deprecation")
-	public String addItem(String title, Date date) {
+	public void addItem(String title, Date date) {
 		ContentValues todoItem = new ContentValues();
 		String finalTitle = title;
 		int counter = 1;
@@ -34,7 +41,6 @@ public class ToDoListModel {
 		todoItem.put(ToDoListConstants.TITLE_COL, finalTitle);
 		todoItem.put(ToDoListConstants.DUE_DATE_COL, Date.parse(date.toString()));
 		db.insert(ToDoListConstants.SQLITE_DB, null, todoItem);
-		return finalTitle;
 	}
 
 	// delete item
